@@ -1,4 +1,30 @@
 # ---------------------------------------------------------------
+# Main Functionality of the Script
+# ---------------------------------------------------------------
+# This script demonstrates how to perform spatial modeling using Markov Chain Monte Carlo (MCMC) 
+# with the 'mcmcsae', 'spdep', and 'sf' packages in R. The analysis is designed to handle 
+# spatial dependencies, heteroscedasticity, and temporal-spatial interactions in direct estimates data.
+#
+# The key functionalities are:
+#
+# 1. **Spatial Modeling (BYM2)**: 
+#    - Fits a spatial model using the BYM2 structure to handle spatial dependencies in the data.
+#    - The model incorporates random walk effects (RW2) and spatial-temporal interactions to account 
+#      for variations across districts and divisions over time.
+#
+# 2. **MCMC Simulation**:
+#    - Uses MCMC simulation to estimate model parameters, running multiple chains for better convergence checks.
+#
+# 3. **Heteroscedasticity Handling**: 
+#    - Defines a variance model to account for heteroscedasticity (variance varying with predictors like 
+#      standard error, year, and division).
+#
+# 4. **Model Validation and Saving Results**: 
+#    - Summarizes posterior statistics from MCMC results and saves the model outputs as an RDS file.
+#
+# The script is designed for performing advanced spatial analysis of direct estimates with MCMC methods.
+# ---------------------------------------------------------------
+# ---------------------------------------------------------------
 # Spatial Modeling using MCMC: Direct Estimates Analysis with BYM2
 # ---------------------------------------------------------------
 # This script demonstrates how to perform spatial modeling with 
