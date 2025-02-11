@@ -15,3 +15,13 @@ The analysis addresses spatial dependencies, heteroscedasticity, and temporal-sp
 - **MCMC Simulation**: Runs MCMC simulations to estimate model parameters with multiple chains to ensure convergence.
 - **Heteroscedasticity Handling**: Models varying variance (heteroscedasticity) across predictors such as year and standard error.
 - **Model Validation**: Summarizes MCMC results and saves the outputs for further analysis.
+
+# Prediction Script for MCMC Spatial Model (BYM2)
+This script is used for generating predictions based on the MCMC results from the BYM2 spatial model. 
+
+## Key Features:
+
+- **Prediction Calculation**: Combines fixed and random effects from MCMC results to generate predictions.
+- **Summary Statistics**: Computes the mean, standard deviation, and confidence intervals for the predictions.
+- **Log-Transformation**: Reverses any log-transformation applied to predictions during model fitting.
+- **Result Storage**: Stores predictions, standard deviations, and confidence intervals in the dataset.
