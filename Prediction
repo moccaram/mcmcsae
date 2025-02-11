@@ -1,4 +1,31 @@
 # ---------------------------------------------------------------
+# Main Functionality of the Prediction Script
+# ---------------------------------------------------------------
+# This script is used to generate predictions from the MCMC results 
+# of a BYM2 spatial model. The predictions are based on fixed effects, 
+# random effects, and confidence intervals, and are then summarized 
+# and stored in the dataset for further analysis.
+#
+# The key functionalities include:
+#
+# 1. **Prediction Calculation**:
+#    - Uses the results from the MCMC fitting process to generate predictions.
+#    - Combines fixed effects (e.g., Year, Division, Cause) with random effects 
+#      (e.g., district-level and cause-division interactions) to make predictions.
+#
+# 2. **Summary Statistics**:
+#    - Computes the mean, standard deviation, and 95% confidence intervals 
+#      (lower and upper bounds) for the predictions based on MCMC samples.
+#
+# 3. **Log-Transformation (Optional)**:
+#    - If predictions were log-transformed during model fitting, the script 
+#      applies the inverse transformation to the predictions.
+#
+# 4. **Result Storage**:
+#    - Saves the predictions, including the mean, standard deviation, 
+#      and confidence intervals, in the dataset for further analysis.
+# ---------------------------------------------------------------
+# ---------------------------------------------------------------
 # Prediction Script for MCMC Spatial Model (BYM2)
 # ---------------------------------------------------------------
 # This script is used for making predictions from the MCMC results 
