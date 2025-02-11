@@ -1,4 +1,26 @@
 # ---------------------------------------------------------------
+# Main Functionality of the Script
+# ---------------------------------------------------------------
+# 
+# This script processes and analyzes survey data to compute direct estimates
+# for various causes of death using survey weights and stratification.
+# The script covers the following key functionalities:
+#
+# 1. **Survey Analysis**: 
+#    - Handles complex survey design features such as weights, strata, and clusters.
+#    - Computes estimates for different causes of death, including the variance of the estimates.
+#
+# 2. **Smoothing and Prediction**: 
+#    - Applies smoothing techniques to adjust the responses and sample sizes.
+#    - Uses a Generalized Variance Function (GVF) model to predict standard errors.
+#
+# 3. **Data Imputation**: 
+#    - Replaces missing values in the responses with division-level means to ensure completeness.
+#
+# The script is designed to work with survey data and applies various statistical methods
+# to provide accurate estimates and predictions for causes of death.
+# ---------------------------------------------------------------
+# ---------------------------------------------------------------
 # Analysis and Prediction of Direct Estimates for Causes of Death
 # ---------------------------------------------------------------
 # This script processes and analyzes survey data to compute direct estimates 
