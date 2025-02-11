@@ -1,0 +1,117 @@
+# ---------------------------------------------------------------
+# Spatial Modeling using MCMC: Direct Estimates Analysis with BYM2
+# ---------------------------------------------------------------
+# This script demonstrates how to perform spatial modeling with 
+# MCMC (Markov Chain Monte Carlo) using the 'mcmcsae', 'spdep', 
+# and 'sf' packages in R. The analysis includes fitting a spatial 
+# model (BYM2), handling spatial dependencies, and dealing with 
+# heteroscedasticity and temporal-spatial interactions in direct 
+# estimates data.
+# ---------------------------------------------------------------
+
+# -----------------------
+# 1. Load Required Libraries
+# -----------------------
+library(mcmcsae)  # For MCMC spatial modeling
+library(spdep)     # For spatial neighborhood analysis
+library(sf)        # For spatial data manipulation
+
+# ---------------------------------------------------------
+# 2. Load and Prepare Data
+# ---------------------------------------------------------
+# Load the dataset (direct estimates)
+# Assuming the file 'direct_estimates.csv' is in your working directory
+data <- read.csv("direct_estimates.csv")
+
+# Convert AREA_NAME and Division to factors (to be used in spatial analysis)
+data$district <- as.factor(data$AREA_NAME)  # Convert AREA_NAME to factor for district
+data$division <- as.factor(data$Division)   # Convert Division to factor for spatial grouping
+
+# Standardize the 'Year' variable for normalization
+data$Year_std <- (data$Year - mean(data$Year, na.rm = TRUE)) / sd(data$Year, na.rm = TRUE)
+
+# ----------------------------
+# 3. Create Adjacency Matrix
+# ----------------------------
+# Create neighbors list using queen contiguity (regions that share a boundary or a corner)
+nb <- poly2nb(geo, queen = TRUE)
+
+# Convert the neighborhood list to an adjacency matrix with binary values
+adj_matrix <- nb2mat(nb, style = "B", zero.policy = TRUE)
+
+# ---------------------------------------------------------
+# 4. Define Variance Model
+# ---------------------------------------------------------
+# Heteroscedasticity model: The variance of the response varies 
+# with the predictor variables (Predicted Standard Error, Year, and Division)
+variance_model <- ~ vreg(~ Predicted_Standard_Error + Year_std + Division)
+
+# ----------------------------------------------------------
+# 5. Define BYM2 Structure and MCMC Sampler
+# ----------------------------------------------------------
+# Define BYM2 structure for spatial modeling
+bym2_structure <- GMRF_structure(type = "bym2", prior = pr_unif(0, 1))
+
+# Create the MCMC sampler with different terms:
+sampler <- create_sampler(
+  formula = Smooth_Response ~ 
+    # Fixed effects with interactions
+    reg(~ Year_std + Division + Cause + Year_std:Cause + Cause:Division, name = "fixed_effects") +
+    
+    # BYM2 spatial effect with neighborhood structure (spatial dependency)
+    gen(~ 1, factor = ~ spatial(district, graph = nb), name = "spatial_bym2", strucA = bym2_structure) +
+    
+    # Random walk (RW2) effects with cause-district interaction
+    gen(~ cause * district, factor = ~ RW2(Year_std), name = "rw2_dist", strucA = GMRF_structure(type = "default")) +
+    
+    # Random walk (RW2) effects with cause-division interaction
+    gen(~ cause * division, factor = ~ RW2(Year_std), name = "rw2_div", strucA = GMRF_structure(type = "default")) +
+    
+    # Spatial-temporal interaction: interaction between spatial effect and Year_std
+    gen(~ Year_std, factor = ~ spatial(district, graph = nb):Cause, name = "spatial_temporal_interaction"),
+  
+  data = data,  # Data to fit the model
+  family = "gaussian",  # Gaussian family for continuous outcome
+  formula.V = variance_model  # Variance model for heteroscedasticity
+)
+
+# --------------------------------------------------------------
+# 6. Fit the Model Using MCMC Simulation
+# --------------------------------------------------------------
+# Run the MCMC simulation to estimate the model parameters
+results <- MCMCsim(
+  sampler,
+  burnin = 1000,     # Number of burn-in iterations to allow model convergence
+  n.iter = 5000,     # Total number of iterations to run
+  thin = 3,          # Thinning interval (store every 3rd sample)
+  n.chain = 2,       # Number of chains for better convergence checks
+  store.all = TRUE   # Store all MCMC samples for later analysis
+)
+
+# --------------------------------------------------------------
+# 7. Validate Results
+# --------------------------------------------------------------
+# Summarize the MCMC results: display posterior statistics
+summary(results)
+
+# --------------------------------------------------------------
+# 8. Save the Results for Later Use
+# --------------------------------------------------------------
+# Save the MCMC results as an RDS file to allow for later analysis
+saveRDS(results, "results.rds")
+
+# ---------------------------------------------------------------
+# End of Script
+# ---------------------------------------------------------------
+# The script performs the following:
+# 1. Loads the required libraries.
+# 2. Loads the direct estimates dataset and prepares it for analysis.
+# 3. Creates a neighborhood list and adjacency matrix.
+# 4. Defines a heteroscedasticity variance model.
+# 5. Sets up and runs an MCMC model using BYM2 with spatial effects.
+# 6. Summarizes the results and saves the outputs as an RDS file.
+#
+# Additional Notes:
+# - Ensure that the dataset file 'direct_estimates.csv' is correctly placed in the working directory.
+# - The 'geo' object used in the poly2nb function must be defined previously in the script (e.g., it could be your spatial data).
+# ---------------------------------------------------------------
