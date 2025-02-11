@@ -107,10 +107,10 @@ sampler <- create_sampler(
 # Run the MCMC simulation to estimate the model parameters
 results <- MCMCsim(
   sampler,
-  burnin = 1000,     # Number of burn-in iterations to allow model convergence
-  n.iter = 5000,     # Total number of iterations to run
-  thin = 3,          # Thinning interval (store every 3rd sample)
-  n.chain = 2,       # Number of chains for better convergence checks
+  burnin = 2000,     # Number of burn-in iterations to allow model convergence
+  n.iter = 10000,     # Total number of iterations to run
+  thin = 5,          # Thinning interval (store every 3rd sample)
+  n.chain = 4,       # Number of chains for better convergence checks
   store.all = TRUE   # Store all MCMC samples for later analysis
 )
 
