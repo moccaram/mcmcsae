@@ -1,273 +1,140 @@
 # ---------------------------------------------------------------
-# Analysis and Prediction of Direct Estimates for Causes of Death
+# Prediction Script for MCMC Spatial Model (BYM2)
 # ---------------------------------------------------------------
-# This script processes and analyzes survey data to compute direct estimates 
-# for various causes of death using survey weights and stratification. 
-# It includes steps for calculating weighted and unweighted sample sizes, 
-# merging direct estimates, smoothing responses, and applying a Generalized 
-# Variance Function (GVF) model to predict standard errors.
+# This script is used for making predictions from the MCMC results 
+# of the BYM2 spatial model. The predictions combine fixed effects, 
+# random effects, and confidence intervals to generate the final 
+# predicted outcomes, which are then summarized and stored in the 
+# dataset for further analysis.
 # ---------------------------------------------------------------
 
-# ----------------------
-# 1. Load Necessary Libraries
-# ----------------------
-library(survey)
-library(dplyr)
+# -----------------------
+# 1. Load the Results and Data
+# -----------------------
+# Load the results from the MCMC fitting process
+results <- rw1_results  # Assuming this is the object that holds the MCMC results
 
-# -----------------------------------------
-# 2. Select Relevant Columns and Merge Data
-# -----------------------------------------
-# Select columns needed for analysis
-data <- merged_data[, c("cause_of_death", "v005_scaled", "v021", "v022", "qncluster", "v101", "v007")]
+# Load the dataset for predictions
+data <- direct_estimates  # Assuming this dataset contains the relevant data
 
-# Join spatial data (assuming geo is an sf object)
-data <- st_join(data, geo)
+# ---------------------------------------------------------
+# 2. Prepare Design Matrices for Predictions
+# ---------------------------------------------------------
+# Define the fixed effects formula (same as used during model fitting)
+fixed_effects_formula <- ~ 1 + Year_std + Division + Cause + Year_std:Cause + Cause:Division
 
-# -----------------------------------------
-# 3. Filter Data for Selected Causes of Death
-# -----------------------------------------
-# Define causes of death to analyze
-selected_causes <- c("birth asphyxia", "drowning", "pneumonia", "possible serious infections", "pre term birth")
+# Generate the model matrix for fixed effects (this is used for prediction)
+X <- model.matrix(fixed_effects_formula, data = data)
 
-# Filter data for selected causes
-data <- data %>% 
-  filter(cause_of_death %in% selected_causes)
+# Define the spatial effects matrix using the adjacency matrix for the spatial model (BYM2)
+# Here, we assume the spatial effect is based on district-level spatial structure
+spatial_effects <- model.matrix(~ 0 + district, data = data)
 
-# ----------------------------------------
-# 4. Convert v101 to Division and Map Survey Years
-# ----------------------------------------
-# Convert Division to a factor and remove v101 if no longer needed
-data <- data %>%
-  mutate(Division = as_factor(v101)) %>%
-  select(-v101)
-
-# Map survey years to a time index
-data <- data %>%
-  mutate(Time_Index = case_when(
-    v007 == 2004 ~ 1,
-    v007 == 2011 ~ 2,
-    v007 == 2017 ~ 3,
-    v007 == 2022 ~ 4
-  ))
-
-# Adjust for single-PSU strata
-options(survey.lonely.psu = "adjust")
-
-# ----------------------------
-# 5. Create Survey Design Object
-# ----------------------------
-# Create survey design object using weights, strata, and clusters
-DHS.design <- svydesign(
-  ids = ~qncluster,
-  weights = ~v005_scaled,
-  strata = ~v022,
-  data = data,
-  nest = TRUE
+# Store the spatial effects in a list (using BYM2 structure for district spatial effects)
+Z_list <- list(
+  spatial_bym2 = spatial_effects  # Assuming BYM2 spatial effect for districts
 )
 
-# --------------------------------------
-# 6. Calculate Direct Estimates for Causes
-# --------------------------------------
-# Initialize list to store direct estimates for each cause
-direct_estimates_list <- list()
+# Define random effects: RW2 effects for cause-district and cause-division interactions
+random_effects <- list(
+  rw2_dist = model.matrix(~ Cause * district, data = data),  # Random effects for cause and district
+  rw2_div = model.matrix(~ Cause * division, data = data)    # Random effects for cause and division
+)
 
-# Loop through selected causes and calculate direct estimates
-for (cause in selected_causes) {
-  # Create binary response variable for the cause of death
-  data$cause_response <- as.integer(data$cause_of_death == cause)
-  
-  # Recalculate survey design with updated response variable
-  DHS.design <- svydesign(
-    ids = ~qncluster,
-    weights = ~v005_scaled,
-    strata = ~v022,
-    data = data,
-    nest = TRUE
-  )
-  
-  # Calculate direct estimates by AREA_NAME, Year, and Division
-  de <- svyby(
-    ~cause_response,
-    by = ~AREA_NAME + v007,
-    design = DHS.design,
-    svymean,
-    vartype = c("se"),
-    keep.var = TRUE
-  )
-  
-  # Add cause information to the estimates
-  de$cause <- cause
-  
-  # Store the estimates in the list
-  direct_estimates_list[[cause]] <- de
+# -----------------------------------------------------------
+# 3. Predict Using MCMC Samples
+# -----------------------------------------------------------
+# Check if the MCMC results object contains fixed effects
+if (is.null(results$fixed_effects)) {
+  stop("results$fixed_effects is not available in the MCMC results. Please check the output of the MCMC fitting process.")
 }
 
-# ----------------------------------------
-# 7. Combine Results for All Causes
-# ----------------------------------------
-# Combine direct estimates from all causes into a single dataframe
-direct_estimates <- do.call(rbind, direct_estimates_list)
-direct_estimates <- data.frame(direct_estimates)
+# Extract the first matrix of fixed effects (samples from the MCMC chain)
+fixed_effects_samples <- results$fixed_effects[[1]]
 
-# ----------------------------------------------
-# 8. Rename and Clean the Final Data
-# ----------------------------------------------
-# Rename columns and calculate variance for estimates
-direct_estimates <- direct_estimates %>%
-  rename(
-    AREA_NAME = AREA_NAME,
-    Year = v007,
-    Response = cause_response,
-    Standard_Error = se,
-    Cause = cause
-  ) %>%
-  mutate(Variance = Standard_Error^2)
+# Ensure the structure of random effects matches the structure of the MCMC results
+# This step aligns the random effects with the model parameters
+for (r in names(Z_list)) {
+  matching_indices <- match(colnames(Z_list[[r]]), attr(results[[r]][[1]], "labels"))
+  results[[r]][[1]] <- results[[r]][[1]][, matching_indices, drop = FALSE]
+  results[[r]][[2]] <- results[[r]][[2]] <- results[[r]][[2]][, matching_indices, drop = FALSE]
+}
 
-# -----------------------------------------
-# 9. Add Missing Estimates with Full Grid
-# -----------------------------------------
-# Generate a full grid of all combinations of area, year, and cause
-area_names <- unique(geo$AREA_NAME)
-years <- c(2004, 2011, 2017, 2022)
-full_grid <- expand.grid(AREA_NAME = area_names, Year = years, Cause = selected_causes)
+# Initialize a matrix to store the detailed predictions for each MCMC sample
+detailed_preds <- matrix(0, nrow = nrow(data), ncol = nrow(fixed_effects_samples))  # One column per sample
 
-# Merge the full grid with direct estimates to ensure all combinations are included
-direct_estimates <- merge(
-  full_grid, 
-  direct_estimates, 
-  by = c("AREA_NAME", "Year", "Cause"), 
-  all.x = TRUE
+# Loop over each MCMC sample to calculate predictions
+for (s in 1:nrow(fixed_effects_samples)) {
+  
+  # Calculate fixed effects predictions using the model matrix for fixed effects
+  fixed_pred <- X %*% fixed_effects_samples[s, ]  # Fixed effect prediction for sample 's'
+  
+  # Calculate random effects predictions (using RW2 and BYM2 effects)
+  random_pred <- Reduce(`+`, lapply(names(Z_list), function(r) {
+    Z_r <- Z_list[[r]]
+    results_r1 <- results[[r]][[1]][s, ]
+    results_r2 <- results[[r]][[2]][s, ]
+    
+    # Combine random effects predictions
+    pred1 <- Z_r %*% results_r1
+    pred2 <- Z_r %*% results_r2
+    pred1 + pred2
+  }))
+  
+  # Combine both fixed and random effects predictions
+  detailed_preds[, s] <- fixed_pred + random_pred
+}
+
+# --------------------------------------------------------------
+# 4. Compute Summary Statistics for Predictions
+# --------------------------------------------------------------
+# Calculate the mean prediction across all MCMC samples for each observation
+trend_means <- rowMeans(detailed_preds)  # Mean of all MCMC samples for each observation
+
+# Calculate the standard deviation of predictions across all MCMC samples
+trend_sds <- apply(detailed_preds, 1, sd)  # Standard deviation for each observation
+
+# --------------------------------------------------------------
+# 5. Compute Confidence Intervals for Predictions (95% CI)
+# --------------------------------------------------------------
+# Define alpha for 95% confidence interval (i.e., 5% for two-tailed CI)
+alpha <- 0.05
+
+# Calculate the lower bound of the 95% CI (2.5% quantile)
+pred_ci_lower <- apply(detailed_preds, 1, function(x) quantile(x, probs = alpha / 2, na.rm = TRUE))
+
+# Calculate the upper bound of the 95% CI (97.5% quantile)
+pred_ci_upper <- apply(detailed_preds, 1, function(x) quantile(x, probs = 1 - alpha / 2, na.rm = TRUE))
+
+# --------------------------------------------------------------
+# 6. Combine and Display Prediction Summary
+# --------------------------------------------------------------
+# Create a summary data frame that contains mean predictions, SD, and confidence intervals
+pred_summary <- data.frame(
+  mean = trend_means,
+  sd = trend_sds,
+  lower_ci = pred_ci_lower,
+  upper_ci = pred_ci_upper
 )
 
-# --------------------------
-# 10. Calculate Sample Sizes
-# --------------------------
-# Create an indicator for unweighted sample size calculation
-data <- data %>% mutate(indicator = 1)
+# If the predictions were log-transformed before fitting, inverse the transformation for predictions
+data$pred_mean <- exp(pred_summary$mean)
+data$pred_sd <- pred_summary$sd  # Standard deviation usually doesn't require transformation
+data$lower_ci <- exp(pred_summary$lower_ci)
+data$upper_ci <- exp(pred_summary$upper_ci)
 
-# Recreate the survey design object
-DHS.design <- svydesign(
-  ids = ~qncluster,
-  weights = ~v005_scaled,
-  strata = ~v022,
-  data = data,
-  nest = TRUE
-)
+# Preview the updated predictions with confidence intervals
+cat("Preview of updated predictions:\n")
+head(data[, c("pred_mean", "pred_sd", "lower_ci", "upper_ci")])
 
-# Calculate unweighted sample size
-sample_size_unweighted <- svyby(
-  ~indicator, 
-  by = ~AREA_NAME + v007 + cause_of_death, 
-  design = DHS.design, 
-  svytotal
-) %>%
-  rename(Sample_Size = indicator)
-
-# Calculate weighted sample size
-sample_size_weighted <- svyby(
-  ~v005_scaled, 
-  by = ~AREA_NAME + v007 + cause_of_death, 
-  design = DHS.design, 
-  svytotal
-) %>%
-  rename(Sample_Size_Weighted = v005_scaled)
-
-# -------------------------------------------
-# 11. Merge Sample Sizes with Direct Estimates
-# -------------------------------------------
-# Merge sample sizes (both unweighted and weighted) into the direct estimates dataframe
-direct_estimates <- direct_estimates %>%
-  left_join(sample_size_unweighted[, c("AREA_NAME", "Year", "Cause", "Sample_Size")], by = c("AREA_NAME", "Year", "Cause")) %>%
-  left_join(sample_size_weighted[, c("AREA_NAME", "Year", "Cause", "Sample_Size_Weighted")], by = c("AREA_NAME", "Year", "Cause"))
-
-# --------------------------------------
-# 12. Add Division Column from Data
-# --------------------------------------
-# Add Division information from the original data using AREA_NAME
-direct_estimates <- direct_estimates %>%
-  left_join(data %>% distinct(AREA_NAME, Division), by = "AREA_NAME")
-
-# -------------------------------------------
-# 13. Compute Division and National Means
-# -------------------------------------------
-# Calculate division-level means for each cause and year
-division_means <- direct_estimates %>%
-  group_by(Division, Year, Cause) %>%
-  summarise(
-    Division_Mean_Response = mean(Response, na.rm = TRUE),
-    Division_Mean_Sample_Size = mean(Sample_Size, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Calculate national means as a fallback
-national_means <- direct_estimates %>%
-  group_by(Year, Cause) %>%
-  summarise(
-    National_Mean_Response = mean(Response, na.rm = TRUE),
-    National_Mean_Sample_Size = mean(Sample_Size, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Merge division means with national means for fallback
-division_means <- division_means %>%
-  left_join(national_means, by = c("Year", "Cause")) %>%
-  mutate(
-    Division_Mean_Response = ifelse(is.na(Division_Mean_Response) | Division_Mean_Response == 0, National_Mean_Response, Division_Mean_Response),
-    Division_Mean_Sample_Size = ifelse(is.na(Division_Mean_Sample_Size) | Division_Mean_Sample_Size == 0, National_Mean_Sample_Size, Division_Mean_Sample_Size)
-  )
-
-# ---------------------------------------------
-# 14. Replace Missing Values and Smooth Responses
-# ---------------------------------------------
-# Replace missing or zero values in Response and Sample_Size with division means
-direct_estimates <- direct_estimates %>%
-  mutate(
-    Response = ifelse(is.na(Sample_Size) | Response %in% c(0, 1), Division_Mean_Response, Response),
-    Sample_Size = ifelse(is.na(Sample_Size), Division_Mean_Sample_Size, Sample_Size)
-  )
-
-# -----------------------------------------------
-# 15. Compute Smoothed Responses and Sample Sizes
-# -----------------------------------------------
-# Apply weight factor to smooth the response and sample size
-direct_estimates <- direct_estimates %>%
-  mutate(
-    Weight_Factor = Sample_Size / (Sample_Size + 1),
-    Smooth_Response = Weight_Factor * Response + (1 - Weight_Factor) * Division_Mean_Response,
-    Smooth_Sample_Size = Weight_Factor * Sample_Size + (1 - Weight_Factor) * Division_Mean_Sample_Size
-  )
-
-# ------------------------------------------
-# 16. Apply GVF Model and Predict Standard Errors
-# ------------------------------------------
-# Filter data for GVF model
-gvf_data <- direct_estimates %>%
-  filter(!is.na(Smooth_Response) & !is.na(Smooth_Sample_Size) & !is.na(Standard_Error) & Standard_Error > 0)
-
-# Fit the GVF model to predict standard errors
-gvf_model <- lm(
-  log(Standard_Error) ~ log(Smooth_Response) + log(Smooth_Sample_Size + 1) + Division + Cause,
-  data = gvf_data
-)
-
-# Predict smoothed standard errors
-direct_estimates <- direct_estimates %>%
-  mutate(
-    Predicted_Standard_Error = exp(predict(gvf_model, newdata = direct_estimates))
-  )
-
-# ------------------------------------------
-# 17. Standardize Year for Analysis
-# ------------------------------------------
-# Standardize the Year variable for analysis
-direct_estimates <- direct_estimates %>%
-  mutate(
-    year.s = (Year - mean(Year, na.rm = TRUE)) / sd(Year, na.rm = TRUE)
-  )
-
-# ----------------------------
-# 18. Final Inspection
-# ----------------------------
-# Check the dimensions and summary of the updated dataset
-dim(direct_estimates)
-summary(direct_estimates)
+# ---------------------------------------------------------------
+# End of Prediction Script
+# ---------------------------------------------------------------
+# This script:
+# 1. Prepares design matrices for fixed effects, spatial effects, and random effects.
+# 2. Uses MCMC samples to make predictions by combining fixed and random effects.
+# 3. Computes summary statistics for predictions, including mean, standard deviation, and confidence intervals.
+# 4. Optionally transforms the predictions back if they were log-transformed before fitting.
+#
+# The results are stored in the 'data' object, which includes predicted means, standard deviations, and confidence intervals.
+# ---------------------------------------------------------------
