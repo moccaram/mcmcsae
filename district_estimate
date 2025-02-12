@@ -1,0 +1,70 @@
+# Check if the 'district' column exists in the dataset
+if (!"district" %in% colnames(dat)) {
+  stop("The 'district' column is missing in the dataset.")
+}
+
+# Check the unique values in the 'district' column
+table(dat$district)
+
+# Merge district information into 'dat'
+dat <- merge(dat, gps[, c("cluster", "district")], by.x = "clustid", by.y = "cluster", all.x = TRUE)
+
+# Check if the 'district' column is now present
+head(dat)
+
+# Compute direct district-level estimates
+direct_district <- getDirect(
+  births = dat, 
+  years = unique(dat$period), 
+  regionVar = "district",  # District-level stratification
+  timeVar = "period", 
+  clusterVar = "~clustid + id", 
+  ageVar = "age", 
+  weightsVar = "weights", 
+  geo.recode = NULL
+)
+
+# Check the output of direct district-level estimates
+head(direct_district)
+
+# Fit INLA model for district-level estimates
+fit_district <- fitINLA(
+  data = direct_district, 
+  geo = geo0,  # District-level spatial structure
+  Amat = Amat_district,  # District-level adjacency matrix
+  year_label = unique(direct_district$years), 
+  year_range = c(1990, 2022), 
+  rw = 2,  # Random walk for temporal smoothing
+  m = 1    # Order of random walk
+)
+
+# Generate smoothed district-level estimates
+out_district <- getSmoothed(
+  fit_district, 
+  year_range = c(1990, 2022), 
+  year_label = unique(direct_district$years)
+)
+
+# Visualize district-level estimates
+plot(out_district, 
+     year_label = out_district$years, 
+     is.subnational = TRUE, 
+     data.add = NULL, 
+     option.add = list(point = "mean"), 
+     label.add = "District Estimates", 
+     color.add = "blue") + 
+  ggtitle("District-Level Smoothing Model") + 
+  ylim(c(0, 1))
+
+# Create a mapping of periods to numeric midpoint years
+period_to_year <- c("1999-2003" = 2004,
+                    "2007-2011" = 2011,
+                    "2013-2017" = 2018,
+                    "2018-2022" = 2022)
+
+# Replace factor levels with numeric midpoint values in district-level estimates
+out_district$years <- as.numeric(period_to_year[as.character(out_district$years)])
+
+# Check the first few years and table of years in the output data
+head(out_district$years)
+table(out_district$years)
