@@ -1,0 +1,138 @@
+# Load necessary libraries
+library(sf)           # For handling spatial data and shapefiles
+library(stringi)      # For string manipulation
+library(dplyr)        # For data manipulation
+
+# File path for the location data (DHS clusters)
+loc <- "F:/Project/Datasets/BD_2022_DHS/BDGE81FL/BDGE81FL.shp"
+# Read the shapefile
+loc <- st_read(loc)
+
+# Create a data frame with cluster, longitude, and latitude
+loc.dat <- data.frame(cluster = loc$DHSCLUST, long = loc$LONGNUM, lat = loc$LATNUM)
+
+# Load and process ADM2 (districts) shapefile
+geo <- st_read("D:/Essential files/gadm/subdistrictpopulation/Bangladesh_adm2_uscb_2022.shp")  # ADM2 (districts)
+geo <- st_read("D:/Essential files/gadm/subdistrictpopulation/Bangladesh_adm1_uscb_2022.shp")   # ADM1 (regions)
+
+# Rename columns for clarity, removing non-ASCII characters
+geo$AREA_NAME <- tolower(stri_trans_general(geo$AREA_NAME, "latin-ascii"))
+geo$region <- geo$ADM1_NAME  # Ensure region column exists
+
+# Create adjacency matrices for regions and districts
+Amat_region <- getAmat(geo, geo$ADM1_NAME)  # For regions (ADM1)
+Amat_district <- getAmat(geo, geo$district)  # For districts (ADM2)
+
+# Convert loc.dat to sf object
+loc_sf <- st_as_sf(loc.dat, coords = c("long", "lat"), crs = 4326)
+
+# Perform spatial join with ADM1 regions
+gps_region <- st_join(loc_sf, geo) %>% 
+  rename(region = ADM1_NAME) %>% 
+  st_drop_geometry()
+
+# Perform spatial join with ADM2 districts
+gps_district <- st_join(loc_sf, geo) %>% 
+  rename(district = AREA_NAME) %>% 
+  st_drop_geometry()
+
+# Merge results from region and district spatial joins
+gps <- merge(gps_region, gps_district, by = "cluster")
+
+# Identify unknown clusters and remove them
+unknown_cluster <- gps$cluster[is.na(gps$region)]
+gps <- gps[!gps$cluster %in% unknown_cluster, ]
+births <- births[!births$v001 %in% unknown_cluster, ]
+
+# Align births with spatial data by merging with GPS data
+births <- merge(births, gps[, c("cluster", "region", "district")], 
+                by.x = "v001", by.y = "cluster")
+
+# Get births data for specific years and strata
+dat <- getBirths(data = births, strata = c("v023"), year.cut = seq(1990, 2023, by = 1))
+
+# Select relevant columns for analysis
+dat <- dat[, c("v001", "v002", "v024", "time", "age", "v005", "strata", "died")]
+colnames(dat) <- c("clustid", "id", "region", "time", "age", "weights", "strata", "died")
+
+# Categorize time periods for analysis
+dat$period <- cut(as.numeric(as.character(dat$time)), 
+                  breaks = c(1996, 2003, 2011, 2017, 2022),
+                  labels = c("1999-2003", "2007-2011", "2013-2017", "2018-2022"),
+                  right = TRUE)
+
+# Check the number of cases per period and handle missing periods
+table(dat$period)
+sum(is.na(dat$period))  # Ensure no missing periods
+
+
+# Check if the 'district' column exists in the dataset
+if (!"district" %in% colnames(dat)) {
+  stop("The 'district' column is missing in the dataset.")
+}
+
+# Check the unique values in the 'district' column
+table(dat$district)
+
+# Merge district information into 'dat'
+dat <- merge(dat, gps[, c("cluster", "district")], by.x = "clustid", by.y = "cluster", all.x = TRUE)
+
+# Check if the 'district' column is now present
+head(dat)
+
+# Compute direct district-level estimates
+direct_district <- getDirect(
+  births = dat, 
+  years = unique(dat$period), 
+  regionVar = "district",  # District-level stratification
+  timeVar = "period", 
+  clusterVar = "~clustid + id", 
+  ageVar = "age", 
+  weightsVar = "weights", 
+  geo.recode = NULL
+)
+
+# Check the output of direct district-level estimates
+head(direct_district)
+
+# Fit INLA model for district-level estimates
+fit_district <- fitINLA(
+  data = direct_district, 
+  geo = geo0,  # District-level spatial structure
+  Amat = Amat_district,  # District-level adjacency matrix
+  year_label = unique(direct_district$years), 
+  year_range = c(1990, 2022), 
+  rw = 2,  # Random walk for temporal smoothing
+  m = 1    # Order of random walk
+)
+
+# Generate smoothed district-level estimates
+out_district <- getSmoothed(
+  fit_district, 
+  year_range = c(1990, 2022), 
+  year_label = unique(direct_district$years)
+)
+
+# Visualize district-level estimates
+plot(out_district, 
+     year_label = out_district$years, 
+     is.subnational = TRUE, 
+     data.add = NULL, 
+     option.add = list(point = "mean"), 
+     label.add = "District Estimates", 
+     color.add = "blue") + 
+  ggtitle("District-Level Smoothing Model") + 
+  ylim(c(0, 1))
+
+# Create a mapping of periods to numeric midpoint years
+period_to_year <- c("1999-2003" = 2004,
+                    "2007-2011" = 2011,
+                    "2013-2017" = 2018,
+                    "2018-2022" = 2022)
+
+# Replace factor levels with numeric midpoint values in district-level estimates
+out_district$years <- as.numeric(period_to_year[as.character(out_district$years)])
+
+# Check the first few years and table of years in the output data
+head(out_district$years)
+table(out_district$years)
