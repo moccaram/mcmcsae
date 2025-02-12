@@ -5,7 +5,7 @@ library(dplyr)        # For data manipulation
 
 # File path for the location data (DHS clusters)
 loc <- "F:/Project/Datasets/BD_2022_DHS/BDGE81FL/BDGE81FL.shp"
-# Read the shapefile
+# Read the shapefile for DHS cluster data
 loc <- st_read(loc)
 
 # Create a data frame with cluster, longitude, and latitude
@@ -23,7 +23,7 @@ geo$region <- geo$ADM1_NAME  # Ensure region column exists
 Amat_region <- getAmat(geo, geo$ADM1_NAME)  # For regions (ADM1)
 Amat_district <- getAmat(geo, geo$district)  # For districts (ADM2)
 
-# Convert loc.dat to sf object
+# Convert loc.dat to sf object (Spatial object)
 loc_sf <- st_as_sf(loc.dat, coords = c("long", "lat"), crs = 4326)
 
 # Perform spatial join with ADM1 regions
@@ -65,20 +65,13 @@ dat$period <- cut(as.numeric(as.character(dat$time)),
 table(dat$period)
 sum(is.na(dat$period))  # Ensure no missing periods
 
-
 # Check if the 'district' column exists in the dataset
 if (!"district" %in% colnames(dat)) {
   stop("The 'district' column is missing in the dataset.")
 }
 
-# Check the unique values in the 'district' column
-table(dat$district)
-
 # Merge district information into 'dat'
 dat <- merge(dat, gps[, c("cluster", "district")], by.x = "clustid", by.y = "cluster", all.x = TRUE)
-
-# Check if the 'district' column is now present
-head(dat)
 
 # Compute direct district-level estimates
 direct_district <- getDirect(
@@ -91,9 +84,6 @@ direct_district <- getDirect(
   weightsVar = "weights", 
   geo.recode = NULL
 )
-
-# Check the output of direct district-level estimates
-head(direct_district)
 
 # Fit INLA model for district-level estimates
 fit_district <- fitINLA(
