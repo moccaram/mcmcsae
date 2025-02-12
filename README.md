@@ -93,3 +93,22 @@ r
 install.packages("INLA")
 install.packages("ggplot2")
 install.packages("dplyr")
+
+# District-Level Mortality Rate Estimation and Smoothing
+
+This repository contains the R code for performing district-level mortality rate estimation and temporal smoothing using data from the Bangladesh Demographic and Health Surveys (BDHS). The analysis utilizes the INLA (Integrated Nested Laplace Approximation) method to generate district-level smoothed estimates and visualizes temporal random effects.
+
+## Prerequisites
+
+Before running the script, you need to install the following R packages:
+
+- `INLA` for Bayesian spatial modeling (INLA model fitting)
+- `ggplot2` for data visualization
+- `dplyr` for data manipulation
+
+You can install these packages by running the following commands in R:
+
+r
+install.packages("INLA")
+install.packages("ggplot2")
+install.packages("dplyr")
