@@ -25,3 +25,22 @@ This script is used for generating predictions based on the MCMC results from th
 - **Summary Statistics**: Computes the mean, standard deviation, and confidence intervals for the predictions.
 - **Log-Transformation**: Reverses any log-transformation applied to predictions during model fitting.
 - **Result Storage**: Stores predictions, standard deviations, and confidence intervals in the dataset.
+
+# Bangladesh DHS Data Analysis for U5MR Estimation
+
+This repository contains the R code to process demographic and geographic data for Bangladesh and calculate the Under-5 Mortality Rate (U5MR) for different time periods. The analysis is based on data from the Bangladesh Demographic and Health Surveys (BDHS), along with spatial shapefiles for different administrative regions of Bangladesh.
+
+## Prerequisites
+
+To run this analysis, you will need to have the following libraries installed:
+
+- `sf` – For handling spatial data and shapefiles
+- `stringi` – For string manipulation
+- `dplyr` – For data manipulation
+
+You can install these packages using the following commands in R:
+
+```r
+install.packages("sf")
+install.packages("stringi")
+install.packages("dplyr")
