@@ -1,0 +1,81 @@
+# Load necessary libraries
+library(sf)           # For handling spatial data and shapefiles
+library(stringi)      # For string manipulation
+library(dplyr)        # For data manipulation
+
+# File path for the location data (DHS clusters)
+loc <- "F:/Project/Datasets/BD_2022_DHS/BDGE81FL/BDGE81FL.shp"
+# Read the shapefile
+loc <- st_read(loc)
+
+# Create a data frame with cluster, longitude, and latitude
+loc.dat <- data.frame(cluster = loc$DHSCLUST, long = loc$LONGNUM, lat = loc$LATNUM)
+
+# Load and process ADM2 (districts) shapefile
+geo <- st_read("D:/Essential files/gadm/subdistrictpopulation/Bangladesh_adm2_uscb_2022.shp")  # ADM2 (districts)
+geo <- st_read("D:/Essential files/gadm/subdistrictpopulation/Bangladesh_adm1_uscb_2022.shp")   # ADM1 (regions)
+
+# Rename columns for clarity, removing non-ASCII characters
+geo$AREA_NAME <- tolower(stri_trans_general(geo$AREA_NAME, "latin-ascii"))
+geo$region <- geo$ADM1_NAME  # Ensure region column exists
+
+# Create adjacency matrices for regions and districts
+Amat_region <- getAmat(geo, geo$ADM1_NAME)  # For regions (ADM1)
+Amat_district <- getAmat(geo, geo$district)  # For districts (ADM2)
+
+# Convert loc.dat to sf object
+loc_sf <- st_as_sf(loc.dat, coords = c("long", "lat"), crs = 4326)
+
+# Perform spatial join with ADM1 regions
+gps_region <- st_join(loc_sf, geo) %>% 
+  rename(region = ADM1_NAME) %>% 
+  st_drop_geometry()
+
+# Perform spatial join with ADM2 districts
+gps_district <- st_join(loc_sf, geo) %>% 
+  rename(district = AREA_NAME) %>% 
+  st_drop_geometry()
+
+# Merge results from region and district spatial joins
+gps <- merge(gps_region, gps_district, by = "cluster")
+
+# Identify unknown clusters and remove them
+unknown_cluster <- gps$cluster[is.na(gps$region)]
+gps <- gps[!gps$cluster %in% unknown_cluster, ]
+births <- births[!births$v001 %in% unknown_cluster, ]
+
+# Align births with spatial data by merging with GPS data
+births <- merge(births, gps[, c("cluster", "region", "district")], 
+                by.x = "v001", by.y = "cluster")
+
+# Get births data for specific years and strata
+dat <- getBirths(data = births, strata = c("v023"), year.cut = seq(1990, 2023, by = 1))
+
+# Select relevant columns for analysis
+dat <- dat[, c("v001", "v002", "v024", "time", "age", "v005", "strata", "died")]
+colnames(dat) <- c("clustid", "id", "region", "time", "age", "weights", "strata", "died")
+
+# Categorize time periods for analysis
+dat$period <- cut(as.numeric(as.character(dat$time)), 
+                  breaks = c(1996, 2003, 2011, 2017, 2022),
+                  labels = c("1999-2003", "2007-2011", "2013-2017", "2018-2022"),
+                  right = TRUE)
+
+# Check the number of cases per period and handle missing periods
+table(dat$period)
+sum(is.na(dat$period))  # Ensure no missing periods
+
+# Remove records with missing periods
+dat <- dat[!is.na(dat$period), ]
+
+# Compute direct U5MR estimates for each period
+direct0 <- getDirect(
+  births = dat, 
+  years = unique(dat$period), 
+  regionVar = "region", 
+  timeVar = "period", 
+  clusterVar = "~clustid + id", 
+  ageVar = "age", 
+  weightsVar = "weights", 
+  geo.recode = NULL
+)
