@@ -38,9 +38,38 @@ To run this analysis, you will need to have the following libraries installed:
 - `stringi` – For string manipulation
 - `dplyr` – For data manipulation
 
+
 You can install these packages using the following commands in R:
 
 ```r
 install.packages("sf")
 install.packages("stringi")
 install.packages("dplyr")
+
+# National Mortality Analysis and Benchmarking
+
+This repository contains the R code for performing national-level mortality rate analysis using data from the Bangladesh Demographic and Health Surveys (BDHS) and the United Nations. The primary focus is on estimating Under-5 Mortality Rate (U5MR) and comparing model outputs with external estimates.
+
+## Prerequisites
+
+Before running the script, install the following R packages:
+
+- `INLA` for Bayesian spatial modeling (INLA model fitting)
+- `ggplot2` for visualizations
+- `dplyr` for data manipulation
+
+You can install these packages by running the following commands in R:
+
+```r
+install.packages("INLA")
+install.packages("ggplot2")
+install.packages("dplyr")
+
+
+### Suggestions
+
+- **Data File Locations**: Ensure the file paths are correct in the script, particularly for the UN CSV file.
+- **Dependencies**: You can include specific versions of packages in a `DESCRIPTION` file if you're planning to package this as an R package.
+- **Plots and Results**: Make sure that the plot outputs are visible in your local R environment. You may also want to save them using `ggsave()` for sharing.
+
+Let me know if you'd like further modifications!
