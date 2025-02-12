@@ -1,0 +1,146 @@
+# Create a mapping of periods to numeric midpoint years
+# This mapping will be used to convert period labels to numeric values
+period_to_year <- c("1999-2003" = 2004,
+                    "2007-2011" = 2011,
+                    "2013-2017" = 2018,
+                    "2018-2022" = 2022)
+
+# Replace factor levels with numeric midpoint values in the direct0 dataset
+direct0$years <- as.numeric(period_to_year[as.character(direct0$years)])
+
+# View the first few years after conversion and check the table of year values
+head(direct0$years)
+table(direct0$years)
+
+# Fit the INLA model with adjusted parameters
+fit0 <- fitINLA(data = direct0, geo = NULL, Amat = NULL, 
+                year_label = unique(direct0$years),  # Numeric year values
+                year_range = c(1990, 2022), rw = 2, m = 1)
+
+# Get smoothed values from the fitted model
+out0 <- getSmoothed(fit0, year_range = c(1990, 2022), year_label = years)
+
+# Plot the smoothed data
+plot(out0, is.subnational = FALSE)
+
+# Extract random time effects from the model fit
+random.time <- getDiag(fit0, field = "time", year_label = years)
+
+# View structure and column names of random.time object
+str(random.time)
+colnames(random.time)
+colnames(random.time) <- sub("years", "year_label", colnames(random.time))
+
+# Create a plot of the random effects using ggplot2
+library(ggplot2)
+ggplot(random.time, aes(x = year_label, y = median)) +
+  geom_line() +
+  facet_grid(~label) + 
+  ggtitle("Compare Temporal Random Effects: National Model") + 
+  ylab("Random Effects") +
+  theme_minimal()
+
+# Load United Nations mortality data
+UN <- read.csv("C:/Users/HP/Downloads/UN.csv")
+names(UN)[names(UN) == "year"] <- "years"  # Rename 'year' column to 'years'
+UN$years <- floor(UN$years)  # Convert to integer values
+
+# Define the mapping of periods to midpoints for the UN data
+UN$period <- cut(
+  UN$years,
+  breaks = c(1996, 2003, 2011, 2017, 2022),
+  labels = c("1999-2003", "2007-2011", "2013-2017", "2018-2022"),
+  right = TRUE
+)
+
+# Aggregate UN estimates by period
+UN_agg <- UN %>%
+  group_by(period) %>%
+  summarize(
+    mean = mean(mean, na.rm = TRUE),  # Average mortality rate per period
+    lower = mean(lower, na.rm = TRUE),
+    upper = mean(upper, na.rm = TRUE)
+  ) %>%
+  filter(!is.na(period))  # Remove NA values
+
+# Adjust the UN estimates for ratio comparison
+UN_agg$mean <- UN_agg$mean / 1000
+UN_agg$lower <- UN_agg$lower / 1000
+UN_agg$upper <- UN_agg$upper / 1000
+
+# Create a mapping from year to period for benchmarking
+year_to_period_out0 <- data.frame(
+  years = c(2004, 2011, 2018, 2022),  # Midpoint years for the periods
+  period = c("1999-2003", "2007-2011", "2013-2017", "2018-2022")
+)
+
+# Merge smoothed model output with period data
+out0 <- merge(out0, year_to_period_out0, by.x = "years", by.y = "years", all.x = TRUE)
+out0$period <- factor(out0$period, levels = levels(UN_agg$period))
+
+# Compute the ratio between the model's smoothed values and UN estimates
+ratio <- out0$median / UN_agg$mean  # Element-wise division
+
+# Store benchmark ratio in a new dataframe
+adj.benchmark <- data.frame(
+  period = UN_agg$period,
+  ratio = ratio
+)
+
+# Compute adjusted direct estimates using the benchmark ratio
+direct0 <- merge(direct0, year_to_period, by.x = "years", by.y = "years", all.x = TRUE)
+direct0$period <- factor(direct0$period, levels = levels(adj.benchmark$period))
+
+# Apply logit transformation for upper and lower bounds
+direct0$logit.lower <- log(direct0$lower / (1 - direct0$lower))
+direct0$logit.upper <- log(direct0$upper / (1 - direct0$upper))
+
+# Get adjusted mortality estimates
+direct <- getAdjusted(
+  data = direct0,
+  ratio = adj.benchmark,
+  time = "period",
+  region = "region",
+  adj = "ratio",
+  logit.lower = "logit.lower",
+  logit.upper = "logit.upper",
+  prob.lower = "lower",
+  prob.upper = "upper"
+)
+
+# Fit INLA model for the adjusted data
+fit0.benchmark <- fitINLA(
+  data = direct0, 
+  geo = NULL, 
+  Amat = NULL, 
+  year_label = unique(direct0$years),  # Now numeric
+  year_range = c(1990, 2022), 
+  rw = 2, 
+  m = 1
+)
+
+# Get smoothed values from the benchmark model
+out0.benchmark <- getSmoothed(fit0.benchmark, year_range = c(1990, 2022), year_label = years)
+
+# Merge period data for benchmarking
+out0.benchmark <- merge(out0.benchmark, year_to_period_out0.benchmark, by.x = "years", by.y = "years", all.x = TRUE)
+out0.benchmark$period <- factor(out0.benchmark$period, levels = levels(UN_agg$period))
+
+# Plot the results before and after benchmarking
+g1 <- plot(out0, 
+           year_label = out0$years.num,  # Explicitly numeric
+           is.subnational = FALSE, 
+           data.add = UN, 
+           option.add = list(point = "mean"), 
+           label.add = "UN", 
+           color.add = "orange") + 
+  ggtitle("National Smoothing Model: Before Benchmarking") + ylim(c(0, 1))
+
+g2 <- plot(out0.benchmark, 
+           year_label = out0.benchmark$years.num, 
+           is.subnational = FALSE, 
+           data.add = UN, 
+           option.add = list(point = "mean"), 
+           label.add = "UN", 
+           color.add = "orange") + 
+  ggtitle("National Smoothing Model: After Benchmarking") + ylim(c(0, 1))
