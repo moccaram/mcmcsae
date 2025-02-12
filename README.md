@@ -41,7 +41,7 @@ To run this analysis, you will need to have the following libraries installed:
 
 You can install these packages using the following commands in R:
 
-```r
+r
 install.packages("sf")
 install.packages("stringi")
 install.packages("dplyr")
@@ -60,7 +60,7 @@ Before running the script, install the following R packages:
 
 You can install these packages by running the following commands in R:
 
-```r
+r
 install.packages("INLA")
 install.packages("ggplot2")
 install.packages("dplyr")
@@ -73,3 +73,23 @@ install.packages("dplyr")
 - **Plots and Results**: Make sure that the plot outputs are visible in your local R environment. You may also want to save them using `ggsave()` for sharing.
 
 Let me know if you'd like further modifications!
+
+
+# Subnational Mortality Rate Estimation and Smoothing
+
+This repository contains the R code for performing subnational-level mortality rate estimation and temporal smoothing using data from the Bangladesh Demographic and Health Surveys (BDHS). The analysis applies the INLA (Integrated Nested Laplace Approximation) method to generate smoothed estimates and visualizes temporal random effects at the subnational level.
+
+## Prerequisites
+
+Before running the script, you need to install the following R packages:
+
+- `INLA` for Bayesian spatial modeling (INLA model fitting)
+- `ggplot2` for data visualization
+- `dplyr` for data manipulation
+
+You can install these packages by running the following commands in R:
+
+r
+install.packages("INLA")
+install.packages("ggplot2")
+install.packages("dplyr")
